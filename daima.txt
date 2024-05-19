@@ -1,0 +1,726 @@
+#include<stdio.h>
+#include<windows.h> 
+#include<string.h>
+#include<stdlib.h>
+#include<time.h>
+//航班信息包括航班号、航空公司、起点、终点、起飞时间、到达时间、票价，
+//余票数量，当日是否晚点等信息
+
+struct Fly		//航班信息，机票信息
+{
+	int number;	//编号，各票的编号是唯一的，方便用户输入编号就能选择想要的票进行操作
+	int isNotNull;	// 是否不为空，==1时表示保存有航班信息
+	char fID[50];	//航班号
+	char company[50];	//航空公司
+	char from[50];	//起点
+	char to[50];	//终点
+	struct tm t1;	//起飞日期、时间
+	struct tm t2;	//到达日期、时间
+	time_t second;	//把起飞日期、时间转换为秒。这样票的排序就很简单了。
+	int price;		//价格
+	int count;		//票数
+	char late[50];	//是否晚点
+};
+typedef struct Fly Fly;
+
+struct Customer		//顾客
+{
+	char cID[50];	//身份证
+	int lose;		//失信次数
+	int tickets;	//订的票数
+	Fly f;			//保存已定的票的信息
+};
+typedef struct Customer Customer;
+
+Fly ff;			//空的票。用来格式化被删除的或过期的或还掉的票
+Customer cc;	//空人。用来格式化票数为零的客户
+Fly f[100];		//保存所有的票
+Customer c[100];//保存所有的客户
+char password[100]="123";	//密码
+char comand[20];//用户输入的命令字符串，防止输入0.1之类的
+int command;	//由char comand[20]转化成的命令
+int fNumber;	//机票总数，fly number 的缩写，程序刚开始时要从文件读取资料的循环次数
+int cNumber;	//顾客数，程序刚开始时要从文件读取资料的循环次数
+int rank=1; 	//机票的编号，唯一的，用于区分不同的票
+
+void Ready();	//程序输出主菜单前，从文件里读取所有数据，文件不存在的话就创建所有的文件
+void Finish();	//用户选择退出时，保存资料
+void Menu();	//输出主菜单，任您选择
+
+void AddFly();		//添加航班
+void DeleteFly();	//删除
+void AlterFly();	//修改
+void SearchFly();	//按航班号、起点、终点、航空公司查询机票
+void MyPrint();		//自己定义的输出函数
+void PrintAllFly();	//输出所有的机票信息
+void SortFly();		//排序机票
+
+void BookTicket();	//订票
+void ReturnTicket();//退票
+void TakeTicket();	//取票
+
+int main()
+{
+	system("color f1");	//设置系统颜色
+	Ready();	//
+	Menu();	    //
+	Finish();	//
+	return 0;
+}
+
+void Ready()	//
+{
+	int i;
+	FILE *fp;
+	fp=fopen("fNumber.dat","rb");		//尝试打开一个文件
+	if(!fp)									//如果打开文件出错，则程序是首次运行，下面赶紧的创建所有文件  
+	{
+		fp=fopen("rank.dat","wb");			//保存编号用到哪个数字了
+		fp=fopen("fNumber.dat","wb");		//保存航班总数
+		fp=fopen("cNumber.dat","wb");		//保存顾客数
+		fp=fopen("flight.dat","wb");		//保存航班信息
+		fp=fopen("customer.dat","wb");		//保存顾客信息
+	}
+	fclose(fp);
+
+	fp=fopen("rank.dat","rb");
+	fread(&rank,sizeof(int),1,fp);				//读取编号用到哪个数字了
+	fclose(fp);
+
+	fp=fopen("fNumber.dat","rb");
+	fread(&fNumber,sizeof(int),1,fp);			//读取航班总数，待会循环读取机票信息要用到
+	fclose(fp);
+
+	fp=fopen("cNumber.dat","rb");
+	fread(&cNumber,sizeof(int),1,fp);			//读取顾客数，同上
+	fclose(fp);
+
+	fp=fopen("flight.dat","rb");			//开始读取各种航班信息
+	for(i=0;i<fNumber;i++)
+	{
+		fread(&f[i],sizeof(Fly),1,fp);
+	}
+	fclose(fp);
+
+	fp=fopen("customer.dat","rb");			//开始读取各种顾客信息
+	for(i=0;i<cNumber;i++)
+	{
+		fread(&c[i],sizeof(Customer),1,fp);
+	}
+	fclose(fp);
+}
+
+void Finish()								//
+{
+	int i;
+	FILE *fp;
+	SortFly();								//写入文件前先对机票按时间排序
+
+	fp=fopen("rank.dat","wb");
+	fwrite(&rank,sizeof(int),1,fp);			//保存编号
+	fclose(fp);
+
+	fp=fopen("fNumber.dat","wb");
+	fwrite(&fNumber,sizeof(int),1,fp);		//
+	fclose(fp);
+
+	fp=fopen("cNumber.dat","wb");
+	fwrite(&cNumber,sizeof(int),1,fp);		//
+	fclose(fp);
+
+	fp=fopen("flight.dat","wb");		//保存各种航班信息
+	for(i=0;i<100;i++)
+	{
+		if(f[i].isNotNull ==1)				//要保存有机票信息的数组元素的信息才写进文件里
+			fwrite(&f[i],sizeof(Fly),1,fp);
+	}
+	fclose(fp);
+
+	fp=fopen("customer.dat","wb");		//保存所有顾客信息
+	for(i=0;i<100;i++)
+	{
+		if(c[i].tickets !=0)				//不订有票的就不用保存他的信息了
+			fwrite(&c[i],sizeof(Customer),1,fp);
+	}
+	fclose(fp);
+}
+
+void Menu()
+{
+	printf("                         ★---您好，欢迎使用民航管理系统！---★\n");    
+    do
+	{
+		printf("================================================================================\n");
+		printf( "         -------- ☆          1. 输入 航班信息              ☆-------- \n"
+                "         -------- ☆          2. 删除 航班信息              ☆-------- \n"
+				"         -------- ☆          3. 修改 航班信息              ☆-------- \n"
+				"         -------- ☆          4. 各航班 起飞时间表          ☆-------- \n"
+
+				"         -------- ☆          5. 按航班号 查询航班信息      ☆-------- \n"
+				"         -------- ☆          6. 按起点 查询航班信息        ☆-------- \n"
+				"         -------- ☆          7. 按终点 查询航班信息        ☆-------- \n"
+				"         -------- ☆          8. 按航空公司 查询航班信息    ☆-------- \n"
+
+				"         -------- ☆          9.  订票                      ☆-------- \n"
+				"         -------- ☆          10. 取票                      ☆-------- \n"
+				"         -------- ☆          11. 退票                      ☆-------- \n"
+				"         -------- ☆          0.  退出                      ☆-------- \n");
+		printf("================================================================================\n");
+		printf("请选择0-11：\n");
+		scanf("%s",comand);
+		while(strlen(comand)>1 && strcmp(comand,&"10")!=0 && strcmp(comand,&"11")!=0)	//长度>2，又不是10和11的话
+		{
+			printf("输入有误！\n");
+			printf("请选择0-11：\n");
+			scanf("%s",comand);
+		}
+		command=atoi(comand);			//把刚输入的命令字符转成整数
+		switch(command)
+		{
+			case 1: AddFly();			//加票
+				    system("color f9");
+      				break;
+			case 2: DeleteFly();		//删票
+				    system("color f2");      				
+      				break;
+			case 3: AlterFly();			//修改航班信息
+				    system("color f3");
+      				break;
+			case 4: PrintAllFly();		//按时间输出所有机票信息
+				    system("color f4");
+      				break;
+
+			case 5:
+			case 6:
+			case 7:
+			case 8:SearchFly();			//按各种条件查找机票
+				   system("color f5");break;
+
+			case 9:BookTicket();		//订票
+				   system("color f6");break;
+			case 10:TakeTicket();		//取票
+				    system("color fc");break;	
+			case 11:ReturnTicket();		//退票
+					system("color fd");break;	
+  			case 0:;
+		}
+	}while(command!=0);       //判断结束
+	printf("谢谢使用，再见！\n");
+}
+
+
+void AddFly()			//增加航班
+{
+	int i;
+	char ch[50];
+
+	printf("请输入密码:\n");			//密码要正确
+	scanf("%s",ch);
+	if(strcmp(ch,password)!=0)
+	{
+		printf("密码错误！\n");
+		return ;
+	}
+	printf("密码正确！\n");
+
+	for(i=0;i<100;i++)					//找一个空的位置保存要增加的机票
+	{
+		if(f[i].isNotNull==0)
+			break;
+	}
+
+	printf("请输入航班号:\n");
+	scanf("%s",f[i].fID);
+
+	printf("请输入航空公司:\n");
+	scanf("%s",f[i].company);
+
+	printf("请输入起点:\n");
+	scanf("%s",f[i].from);
+
+	printf("请输入终点:\n");
+	scanf("%s",f[i].to);
+
+	printf("请输入起飞日期和时间(格式如2024.4.15 23.45):\n");
+	//f[i]的t1是系统定义的结构体，tm_year的tm_只是前缀，tm_mday是某个月的某天，
+	scanf("%d.%d.%d %d.%d",&f[i].t1.tm_year,&f[i].t1.tm_mon,&f[i].t1.tm_mday,&f[i].t1.tm_hour,&f[i].t1.tm_min);
+	f[i].t1.tm_year-=1900;			//tm_year可以理解为year，不过是从1900年开始计算
+	f[i].t1.tm_mon--;				//tm_mon理解为month，一月份是0，所以减一
+	while(mktime(&f[i].t1)==-1)		//mktime()函数是计算日期t1到1900年1月1日的秒数，日期错误的话计算结果是-1，借此验证用户输入的日期是否正确
+	{
+		printf("输入的起飞日期和时间有误！请正确输入！！\n");
+		printf("请输入起飞日期和时间(格式如2024.4.15 23.45):\n");
+		scanf("%d.%d.%d %d.%d",&f[i].t1.tm_year,&f[i].t1.tm_mon,&f[i].t1.tm_mday,&f[i].t1.tm_hour,&f[i].t1.tm_min);
+		f[i].t1.tm_year-=1900;
+		f[i].t1.tm_mon--;
+	}
+	f[i].second=mktime(&f[i].t1);	//把起飞日期转化为到1900年一月一号的秒数，用于航班按时间排序
+
+	printf("请输入到达日期和时间(格式如2024.4.15 23.45):\n");
+	scanf("%d.%d.%d %d.%d",&f[i].t2.tm_year,&f[i].t2.tm_mon,&f[i].t2.tm_mday,&f[i].t2.tm_hour,&f[i].t2.tm_min);
+	f[i].t2.tm_year-=1900;
+	f[i].t2.tm_mon--;
+	while(mktime(&f[i].t2)==-1 || mktime(&f[i].t2)<=mktime(&f[i].t1))	//如果输入的日期有误或者比起飞时间还早的话，报错
+	{
+		printf("输入的到达日期和时间有误！请正确输入！！\n");
+		//printf("mktime(&f[i].t2)=%d\n",mktime(&f[i].t2));
+		printf("请输入到达日期和时间(格式如2024.4.15 23.45):\n");
+		scanf("%d.%d.%d %d.%d",&f[i].t2.tm_year,&f[i].t2.tm_mon,&f[i].t2.tm_mday,&f[i].t2.tm_hour,&f[i].t2.tm_min);
+		f[i].t2.tm_year-=1900;
+		f[i].t2.tm_mon--;
+	}
+
+	printf("请输入价格:\n");
+	scanf("%d",&f[i].price);
+
+	printf("请输入票数:\n");
+	scanf("%d",&f[i].count);
+
+	printf("是否晚点（y / n）:\n");
+	scanf("%s",f[i].late);
+
+	printf("添加航班成功！\n");
+	fNumber++;					//航班总数+1
+	f[i].isNotNull=1;			//表示保存有航班信息
+	f[i].number =rank;			//设置航班的编号
+	rank++;						//增加一种航班，编号就++
+}
+
+void DeleteFly()			
+{
+	int i;
+	int deleteFly;				//用户输入的要删除的航班的编号
+	char ch[50];				//用户输入的密码
+
+	if(0==fNumber)				//没有该航班，不能删除
+	{
+		printf("库存为零，无法删除！\n");
+		return ;
+	}
+
+	printf("请输入密码:\n");	//密码要输对
+	scanf("%s",ch);
+	if(strcmp(ch,password)!=0)
+	{
+		printf("密码错误！\n");
+		return ;
+	}
+	printf("密码正确！\n");
+
+	PrintAllFly();				//输出所有的航班信息让你删
+
+	do							//循环判断输入的航班的编号是否有效
+	{
+		printf("请输入编号，输入0 返回上层菜单\n");
+		scanf("%d",&deleteFly);
+		if(deleteFly==0)
+			return ;			//结束本函数
+		for(i=0;i<100;i++)		//查找要删除的航班
+		{
+			if(f[i].number == deleteFly )   //机票信息和输入的编号相等
+			{				
+				f[i]=ff;		//ff的所有数据都是空的
+				fNumber--;		//机票总数-1
+				printf("删除成功！\n");
+				return ;		//结束本函数
+			}			
+		}
+		printf("输入有误！\n");//函数能运行到这里说明上面的for循环没有找到要删除的机票
+	}while(1);	
+}
+
+void AlterFly()
+{
+	int i;
+	int alter;					//保存用户要修改的航班的编号
+	int inputRight=0;			//用户输入的编号是否有效
+	char ch[50];				//保存输入的密码
+	if(0==fNumber)
+	{
+		printf("库存为零，无法修改！\n");
+		return ;
+	}
+
+	printf("请输入密码:\n");	//判断密码正确与否
+	scanf("%s",ch);
+	if(strcmp(ch,password)!=0)
+	{
+		printf("密码错误！\n");
+		return ;
+	}
+	printf("密码正确！\n");
+
+	PrintAllFly();				//输出所有航班信息让你修改
+
+	do							//循环查找要修改的航班，用f[i]来表示
+	{
+		printf("请输入编号，回车返回上层菜单\n");
+		scanf("%d",&alter);
+		if(alter==0)
+			return ;
+		for(i=0;i<100;i++)
+		{
+			if(alter==f[i].number )
+			{
+				inputRight=1;	//表示找到了要修改的航班，输入的编号是合法的，退出循环
+				break;
+			}
+		}
+		if(inputRight==0)
+			printf("输入有误！\n");
+	}while(inputRight==0);
+
+	printf("请输入航班号:\n");
+	scanf("%s",f[i].fID);
+
+	printf("请输入航空公司:\n");
+	scanf("%s",f[i].company);
+
+	printf("请输入起点:\n");
+	scanf("%s",f[i].from);
+
+	printf("请输入终点:\n");
+	scanf("%s",f[i].to);
+
+	printf("请输入起飞日期和时间(格式如2024.4.15 23.45):\n");
+	//在AddFly 函数有解释
+	scanf("%d.%d.%d %d.%d",&f[i].t1.tm_year,&f[i].t1.tm_mon,&f[i].t1.tm_mday,&f[i].t1.tm_hour,&f[i].t1.tm_min);
+	f[i].t1.tm_year-=1900;
+	f[i].t1.tm_mon--;
+	while(mktime(&f[i].t1)==-1)
+	{
+		printf("输入的起飞日期和时间有误！请正确输入！！\n");
+		printf("请输入起飞日期和时间(格式如2024.4.15 23.45):\n");
+		scanf("%d.%d.%d %d.%d",&f[i].t1.tm_year,&f[i].t1.tm_mon,&f[i].t1.tm_mday,&f[i].t1.tm_hour,&f[i].t1.tm_min);
+		f[i].t1.tm_year-=1900;
+	}
+	f[i].second=mktime(&f[i].t1);
+
+	printf("请输入到达日期和时间(格式如2024.4.15 23.45):\n");
+	scanf("%d.%d.%d %d.%d",&f[i].t2.tm_year,&f[i].t2.tm_mon,&f[i].t2.tm_mday,&f[i].t2.tm_hour,&f[i].t2.tm_min);
+	f[i].t2.tm_year-=1900;
+	f[i].t2.tm_mon--;
+	while(mktime(&f[i].t2)==-1 || mktime(&f[i].t2)<=mktime(&f[i].t1))
+	{
+		printf("输入的到达日期和时间有误！请正确输入！！\n");
+		printf("请输入到达日期和时间(格式如2024.4.15 23.45):\n");
+		scanf("%d.%d.%d %d.%d",&f[i].t2.tm_year,&f[i].t2.tm_mon,&f[i].t2.tm_mday,&f[i].t2.tm_hour,&f[i].t2.tm_min);
+		f[i].t2.tm_year-=1900;
+	}
+
+	printf("请输入价格:\n");
+	scanf("%d",&f[i].price);
+
+	printf("请输入票数:\n");
+	scanf("%d",&f[i].count);
+
+	printf("是否晚点（y / n）:\n");
+	scanf("%s",f[i].late);
+	printf("修改航班成功！\n");
+}
+
+void SearchFly()
+{
+	int i,have=0;					//have表示要查找的航班是否存在
+	char searchFly[50];				//保存输入的查询条件，比如航班号，起点、终点等
+	if(0==fNumber)
+	{
+		printf("库存为零，无法查询！\n");
+		return ;
+	}
+
+	SortFly();						//排序
+
+	printf("请输入\n");
+	scanf("%s",searchFly);
+	for(i=0;i<100;i++)
+	{
+		if(command==5 && strcmp(f[i].fID,searchFly)==0)
+		{
+			MyPrint(f[i]);			//调用自定义的输出函数
+			have=1;
+		}
+		if(command==6 && strcmp(f[i].from ,searchFly)==0)
+		{
+			MyPrint(f[i]);
+			have=1;
+		}
+		if(command==7 && strcmp(f[i].to,searchFly)==0)
+		{
+			MyPrint(f[i]);
+			have=1;
+		}
+		if(command==8 && strcmp(f[i].company ,searchFly)==0)
+		{
+			MyPrint(f[i]);
+			have=1;
+		}
+	}
+	if(have==0)
+		printf("抱歉！没有找到相关航班信息！\n");
+}
+
+void MyPrint(Fly f)
+{
+	printf("--------------------------------------------------------------------------------");
+	printf("航班号：%-20s航空公司：%-20s",f.fID,f.company);
+
+	if(strcmp(f.late,"y")==0)
+		printf("  晚点  ");
+	if(strcmp(f.late,"n")==0)
+		printf("  不晚点");
+	printf("   编号：%d\n",f.number);
+
+	printf("起点-> %-20s",f.from);
+	//tm_mon中0表示一月份，1表示二月份，所以+1
+	printf(" 起飞时间：%4d.%2d.%-2d %2d:%2d",f.t1.tm_year+1900, f.t1.tm_mon+1, f.t1.tm_mday, f.t1.tm_hour, f.t1.tm_min);
+	printf("      价格(元)：%d\n",f.price);
+
+	printf("终点-> %-20s",f.to);
+	printf(" 到达时间：%4d.%2d.%-2d %2d:%2d",f.t2.tm_year+1900, f.t2.tm_mon+1, f.t2.tm_mday, f.t2.tm_hour, f.t2.tm_min);
+	printf("      剩余票数：%d\n" ,f.count);
+	
+	printf("--------------------------------------------------------------------------------");
+}
+
+void PrintAllFly()
+{
+	int i;
+	if(fNumber==0)
+	{
+		printf("库存为零！\n");
+		return ;
+	}
+
+	SortFly();				//排序
+
+	printf("目前共有航班 %d 个\n",fNumber);
+	for(i=0;i<100;i++)
+	{
+		if(f[i].isNotNull == 1)	//保存有航班信息的元素才输出
+		{
+			MyPrint(f[i]);
+		}
+	}
+}
+
+void SortFly()
+{
+	int i,j,index;			//选择排序法
+	Fly temp;				//用于交换
+	for(i=0;i<99;i++)
+	{
+		if(f[i].isNotNull==0)//为空的元素不参与排序
+			continue;
+		index=i;
+		for(j=i+1;j<100;j++)	//寻找最先起飞的机票的数组下标
+		{
+			if(f[j].isNotNull==0)//为空的元素不参与比较
+				continue;
+			if(f[index].second>f[j].second)
+				index=j;
+		}
+		if(index!=i)		//交换
+		{
+			temp=f[i];
+			f[i]=f[index];
+			f[index]=temp;
+		}
+	}
+}
+
+
+void BookTicket()
+{
+	int i,j;
+	int newCustomer=1;			//是否新的顾客，新顾客的话要保存他的身份证号，相当于注册，老顾客的话要判断是否失信
+	int bookCommand;			//订票的编号
+	int inputRight;				//输入的编号是否有效
+	char cID[50];				//身份证
+	time_t nowtime;				//一个time_t类型的变量，用来保存当前时间距离1900.1.1的秒数
+	time(&nowtime);				//获取当前时间并赋值给nowtime这个变量，如1232323239秒
+
+	if(0==fNumber)
+	{
+		printf("库存为零，无法订票！\n");
+		return ;
+	}
+
+	printf("请输入身份证号：\n");
+	scanf("%s",cID);
+	for(i=0;i<100;i++)				//判断是否新的顾客
+	{
+		if(strcmp(c[i].cID,cID)==0) //在c[100]中找到匹配的身份证的话
+		{
+			newCustomer=0;			//就是老顾客了，老顾客在订票前判断其是否失信等
+			break;
+		}
+	}
+
+	if(newCustomer==0)			//如果是老顾客的话
+	{
+		// f是航班，如果定有票，    (起飞时间的秒数-当前时间的秒数)/3600是算小时数，<1为失信
+		//即在起飞前1小时内未取票，视为失信1次，2次以上取消以后预订的次数。
+		if( c[i].f.isNotNull ==1 && (mktime(&c[i].f.t1) - nowtime)/3600 < 1 )	
+		{
+			c[i].f =ff;			//过时未取，废票要清空
+			c[i].lose ++ ;		//失信次数++
+			c[i].tickets =0;	//订票数清空
+		}
+
+		if(c[i].tickets ==2)
+		{
+			printf("您已订票两张，不能再订了！\n\n");
+			return ;
+		}
+
+		if(c[i].lose  ==2)
+		{
+			printf("您已两次未及时取票，被视为无信誉顾客，不能再订了！\n\n");
+			return ;
+		}
+	} 
+
+	if(newCustomer==1)			//如果是新顾客
+	{
+		for(i=0;i<100;i++)
+		{
+			if(c[i].tickets ==0)
+			{
+				strcpy(c[i].cID,cID);		//保存新顾客的身份证				
+				break;
+			}
+		}
+	}
+
+	PrintAllFly();				//输出所有的航班信息让你订
+
+	do
+	{
+		printf("请输入编号，回车返回上层菜单\n");
+		scanf("%d",&bookCommand);
+		if(bookCommand==0)
+			return ;
+		for(j=0;j<100;j++)		//寻找要订的航班
+		{
+			if(f[j].number==bookCommand)
+			{
+				inputRight=1;	//找到了，用户输入的编号是有效的
+				break;
+			}
+		}	
+		if(inputRight==0)
+			printf("输入有误！\n");
+	}while(inputRight==0);		//用户输入的编号无效，继续让他输入
+
+	if( f[j].count==0 )
+	{
+		printf("该航班的票已经售完！订票失败！\n");
+		return ;
+	}		
+
+	if( (mktime(&f[j].t1)-nowtime)/(60*60*24)>15 )		// (秒数-秒数)/(60*60*24)是算天数的，>15天不能订票
+	{
+		printf("%d\n",(mktime(&f[j].t1)-nowtime)/(60*60*24));
+		printf("只能提前15天订票！订票失败！\n");
+		return ;
+	}
+
+	if( (mktime(&f[j].t1)-nowtime)/3600 <4 )			// (秒数-秒数)/3600 是算小时数，距起飞不到4小时不许订票
+	{
+		printf("必须在起飞前的4小时订票！订票失败！\n");
+		return ;
+	}
+
+	if(c[i].f.isNotNull ==1 && c[i].f.number != f[j].number )	//已经订了一种航班，只能继续订这种航班，number是航班的唯一编号
+	{
+		printf("每人只能预订一个航班！订票失败！\n");
+		return ;
+	}
+
+	c[i].f=f[j];				//保存定的票的信息
+	c[i].tickets ++;			//订票数++
+	f[j].count--;				//航班的票数--
+	printf("订票成功！请及时取票！\n");
+    printf("%d天\n",(mktime(&f[j].t1)-nowtime)/(60*60*24));
+	printf("mktime(&f[j].t1=%d\n",mktime(&f[j].t1));
+	printf("nowtime=%d\n",nowtime);
+	printf("%d小时\n",(mktime(&f[j].t1)-nowtime)/3600);
+}
+
+void ReturnTicket()
+{
+	int i,k;
+	int number;					//退票数
+	int exist=0;				//是否注册了，订有票会自动注册
+	char cID[50]="";			//输入的身份证号
+	printf("请输入身份证号：\n");
+	scanf("%s",cID);
+	for(i=0;i<100;i++)			//循环判断是否注册了
+	{
+		if(strcmp(c[i].cID,cID)==0)		//身份证号匹配表明注册过了
+		{
+			exist=1;
+			break;
+		}
+	}
+	if(exist==0 )				//如果未注册，肯定没订有票
+	{
+		printf("您未订票！\n");
+		return ;
+	}
+
+	MyPrint(c[i].f);			//输出已订航班的信息
+	printf("您已订票 %d 张\n",c[i].tickets );
+	
+	do
+	{
+		printf("请输入退票数，输入 0 返回！\n");			//输入退票的票数
+		scanf("%d",&number);
+		if(number==0)
+			return ;
+		if((number!=1 && number!=2 )|| number>c[i].tickets)		//输入的退票数最多为2，或者多于已订票数，提示输入错误
+			printf("输入有误！\n");
+	}while( (number!=1 && number!=2 )|| number>c[i].tickets );
+
+	for(k=0;k<100;k++)			//循环寻找退票的航班
+	{
+		if(f[k].isNotNull ==1 && f[k].number==c[i].f.number )
+		{
+			f[k].count+=number;//退票后相应的航班的票数要增加
+			break;
+		}
+	}	
+	printf("退票成功！\n");
+	c[i].tickets -=number;		//订票数相应减少
+	if(c[i].tickets==0)			//如果订票数为零
+		c[i]=cc;				//删除该用户信息
+}
+
+void TakeTicket()
+{
+	int i;
+	int exist=0;				//是否注册了
+	char cID[50]="";			//输入的身份证号
+	printf("请输入身份证号：\n");
+	scanf("%s",cID);
+	for(i=0;i<100;i++)			//循环判断是否注册
+	{
+		if(strcmp(c[i].cID,cID)==0)		//匹配的话
+		{
+			exist=1;			//表示已经注册了
+			break;
+		}
+	}
+	if(exist==0 )				//如果还没注册，肯定没订票
+	{
+		printf("您未订票！\n");
+		return ;
+	}
+
+	MyPrint(c[i].f);			//输出已订票的信息
+
+	c[i]=cc;					//取完票后删除用户信息	
+
+	printf("取票成功！\n");
+}
